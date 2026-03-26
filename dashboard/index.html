@@ -1,0 +1,1242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GitHub Event Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+/* ─── Design System ─────────────────────────────────────────────────────── */
+:root {
+  --bg:        #070b14;
+  --surface:   #0d1525;
+  --surface2:  #111d35;
+  --border:    rgba(99,179,237,0.12);
+  --border2:   rgba(99,179,237,0.22);
+
+  --blue:      #3b8ef3;
+  --cyan:      #22d3ee;
+  --green:     #34d399;
+  --yellow:    #fbbf24;
+  --red:       #f87171;
+  --purple:    #a78bfa;
+  --pink:      #f472b6;
+  --orange:    #fb923c;
+
+  --text:      #e2eaf5;
+  --muted:     #6b87a8;
+  --dim:       #3a5070;
+
+  --radius:    12px;
+  --glow-blue: 0 0 20px rgba(59,142,243,0.35);
+  --glow-cyan: 0 0 20px rgba(34,211,238,0.35);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ─── Animated Grid Background ─────────────────────────────────────────── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(59,142,243,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(59,142,243,0.04) 1px, transparent 1px);
+  background-size: 48px 48px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  top: -30%; left: -10%;
+  width: 60%; height: 60%;
+  background: radial-gradient(ellipse, rgba(59,142,243,0.07) 0%, transparent 65%);
+  pointer-events: none;
+  z-index: 0;
+  animation: drift 18s ease-in-out infinite alternate;
+}
+
+@keyframes drift {
+  from { transform: translate(0, 0) scale(1); }
+  to   { transform: translate(8%, 6%) scale(1.1); }
+}
+
+/* ─── Layout ────────────────────────────────────────────────────────────── */
+.app { position: relative; z-index: 1; max-width: 1600px; margin: 0 auto; padding: 20px 24px 48px; }
+
+/* ─── Header ────────────────────────────────────────────────────────────── */
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 28px;
+  background: rgba(13,21,37,0.85);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  backdrop-filter: blur(20px);
+  margin-bottom: 24px;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.logo-icon {
+  width: 42px; height: 42px;
+  background: linear-gradient(135deg, var(--blue), var(--cyan));
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px;
+  box-shadow: var(--glow-blue);
+  flex-shrink: 0;
+}
+
+.logo-text h1 {
+  font-family: 'Space Mono', monospace;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  background: linear-gradient(90deg, var(--text), var(--cyan));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.logo-text p { font-size: 12px; color: var(--muted); margin-top: 1px; }
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.live-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 99px;
+  font-size: 12px;
+  font-family: 'Space Mono', monospace;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  background: rgba(52,211,153,0.1);
+  border: 1px solid rgba(52,211,153,0.25);
+  color: var(--green);
+  transition: all 0.3s;
+}
+.live-badge.disconnected {
+  background: rgba(248,113,113,0.1);
+  border-color: rgba(248,113,113,0.25);
+  color: var(--red);
+}
+
+.live-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+.disconnected .live-dot {
+  background: var(--red);
+  animation: none;
+}
+
+@keyframes pulse-dot {
+  0%,100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.4; transform: scale(0.8); }
+}
+
+.queue-info {
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.queue-info span { color: var(--cyan); font-weight: 700; }
+
+/* ─── Stats Grid ────────────────────────────────────────────────────────── */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px 24px;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.3s, transform 0.2s;
+  cursor: default;
+}
+
+.stat-card:hover {
+  border-color: var(--border2);
+  transform: translateY(-2px);
+}
+
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  right: 0; height: 2px;
+  background: var(--accent-color, var(--blue));
+  opacity: 0.8;
+}
+
+.stat-card.blue   { --accent-color: var(--blue); }
+.stat-card.cyan   { --accent-color: var(--cyan); }
+.stat-card.green  { --accent-color: var(--green); }
+.stat-card.purple { --accent-color: var(--purple); }
+
+.stat-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.stat-value {
+  font-family: 'Space Mono', monospace;
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1;
+  margin-bottom: 8px;
+  transition: all 0.4s;
+}
+
+.stat-sub {
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stat-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.badge-green { background: rgba(52,211,153,0.15); color: var(--green); }
+.badge-red   { background: rgba(248,113,113,0.15); color: var(--red); }
+.badge-blue  { background: rgba(59,142,243,0.15);  color: var(--blue); }
+
+.stat-icon {
+  position: absolute;
+  right: 20px; top: 50%;
+  transform: translateY(-50%);
+  font-size: 36px;
+  opacity: 0.08;
+}
+
+/* ─── Charts Row ────────────────────────────────────────────────────────── */
+.charts-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+/* ─── Bottom Grid ───────────────────────────────────────────────────────── */
+.bottom-grid {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr 1fr;
+  gap: 16px;
+}
+
+/* ─── Panel ─────────────────────────────────────────────────────────────── */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255,255,255,0.02);
+}
+
+.panel-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.panel-title .icon { font-size: 16px; }
+
+.panel-body { padding: 16px; }
+.panel-body.no-pad { padding: 0; }
+.panel-body.scroll {
+  max-height: 400px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--dim) transparent;
+}
+
+.panel-count {
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--surface2);
+  padding: 3px 10px;
+  border-radius: 4px;
+}
+
+/* ─── Event Feed ────────────────────────────────────────────────────────── */
+.event-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.2s;
+  animation: slideIn 0.35s ease;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-10px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.event-item:hover { background: rgba(59,142,243,0.04); }
+.event-item:last-child { border-bottom: none; }
+
+.event-avatar {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 2px solid var(--border);
+}
+
+.event-avatar-fallback {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--blue), var(--purple));
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 700; color: white;
+}
+
+.event-body { flex: 1; min-width: 0; }
+
+.event-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.event-type-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-family: 'Space Mono', monospace;
+  letter-spacing: 0.03em;
+  flex-shrink: 0;
+}
+
+.event-actor { font-weight: 600; color: var(--blue); font-size: 13px; }
+.event-repo  { color: var(--muted); font-size: 12px; }
+
+.event-msg {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 3px;
+}
+
+.event-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 5px;
+}
+
+.event-time {
+  font-size: 11px;
+  color: var(--dim);
+  font-family: 'Space Mono', monospace;
+}
+
+.sentiment-pill {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 99px;
+  font-family: 'Space Mono', monospace;
+}
+.s-positive { background: rgba(52,211,153,0.15); color: var(--green); }
+.s-negative { background: rgba(248,113,113,0.15); color: var(--red); }
+.s-neutral  { background: rgba(107,135,168,0.15); color: var(--muted); }
+
+/* ─── Event Type Colors ─────────────────────────────────────────────────── */
+.t-push   { background: rgba(59,142,243,0.15); color: var(--blue); }
+.t-watch  { background: rgba(251,191,36,0.15);  color: var(--yellow); }
+.t-fork   { background: rgba(52,211,153,0.15);  color: var(--green); }
+.t-pr     { background: rgba(167,139,250,0.15); color: var(--purple); }
+.t-issue  { background: rgba(248,113,113,0.15); color: var(--red); }
+.t-create { background: rgba(34,211,238,0.15);  color: var(--cyan); }
+.t-delete { background: rgba(244,114,182,0.15); color: var(--pink); }
+.t-release { background: rgba(251,146,60,0.15); color: var(--orange); }
+.t-other  { background: rgba(107,135,168,0.15); color: var(--muted); }
+
+/* ─── Trending Repos ────────────────────────────────────────────────────── */
+.repo-item {
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.2s;
+}
+
+.repo-item:hover { background: rgba(59,142,243,0.04); }
+.repo-item:last-child { border-bottom: none; }
+
+.repo-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 5px;
+}
+
+.repo-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--cyan);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
+}
+
+.repo-count {
+  font-family: 'Space Mono', monospace;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.repo-bar-track {
+  height: 3px;
+  background: var(--surface2);
+  border-radius: 2px;
+  margin-bottom: 5px;
+}
+
+.repo-bar-fill {
+  height: 3px;
+  background: linear-gradient(90deg, var(--blue), var(--cyan));
+  border-radius: 2px;
+  transition: width 0.6s ease;
+}
+
+.repo-meta {
+  display: flex;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.repo-meta span { display: flex; align-items: center; gap: 3px; }
+
+/* ─── NLP Keywords ──────────────────────────────────────────────────────── */
+.keyword-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 16px;
+}
+
+.keyword-tag {
+  padding: 4px 12px;
+  border-radius: 99px;
+  font-size: 12px;
+  font-family: 'Space Mono', monospace;
+  border: 1px solid var(--border2);
+  color: var(--text);
+  transition: all 0.2s;
+  cursor: default;
+  white-space: nowrap;
+}
+
+.keyword-tag:hover {
+  background: rgba(59,142,243,0.1);
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+/* ─── Sentiment Bar ─────────────────────────────────────────────────────── */
+.sentiment-bars { padding: 0 16px 16px; }
+
+.sbar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.sbar-label {
+  font-size: 12px;
+  color: var(--muted);
+  width: 60px;
+  flex-shrink: 0;
+}
+
+.sbar-track {
+  flex: 1;
+  height: 8px;
+  background: var(--surface2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.sbar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.sbar-pct {
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+  width: 36px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* ─── Chart Canvas ──────────────────────────────────────────────────────── */
+.chart-wrapper {
+  position: relative;
+  padding: 16px;
+}
+
+.chart-wrapper canvas { max-height: 230px; }
+
+/* ─── Contributors ──────────────────────────────────────────────────────── */
+.contrib-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.contrib-item:last-child { border-bottom: none; }
+
+.contrib-avatar {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  flex-shrink: 0;
+}
+
+.contrib-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.contrib-count {
+  font-family: 'Space Mono', monospace;
+  font-size: 12px;
+  color: var(--cyan);
+}
+
+/* ─── Toast ─────────────────────────────────────────────────────────────── */
+#toast-container {
+  position: fixed;
+  bottom: 24px; right: 24px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.toast {
+  padding: 10px 16px;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--text);
+  backdrop-filter: blur(10px);
+  animation: toastIn 0.3s ease, toastOut 0.3s ease 2.7s forwards;
+  border-left: 3px solid var(--blue);
+  max-width: 300px;
+}
+
+@keyframes toastIn  { from { opacity:0; transform: translateY(10px); } }
+@keyframes toastOut { to   { opacity:0; transform: translateY(10px); } }
+
+/* ─── Empty State ───────────────────────────────────────────────────────── */
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.empty-state .emoji { font-size: 32px; display: block; margin-bottom: 10px; }
+
+/* ─── Responsive ────────────────────────────────────────────────────────── */
+@media (max-width: 1200px) {
+  .stats-grid   { grid-template-columns: repeat(2, 1fr); }
+  .bottom-grid  { grid-template-columns: 1fr 1fr; }
+  .charts-grid  { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 768px) {
+  .stats-grid  { grid-template-columns: 1fr 1fr; }
+  .bottom-grid { grid-template-columns: 1fr; }
+  .app { padding: 12px 12px 40px; }
+  header { flex-direction: column; gap: 12px; align-items: flex-start; }
+}
+
+/* ─── Scrollbar ─────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--dim); border-radius: 3px; }
+
+/* ─── Number flash animation ────────────────────────────────────────────── */
+.flash {
+  animation: numFlash 0.4s ease;
+}
+@keyframes numFlash {
+  0% { color: var(--cyan); }
+  100% { color: var(--text); }
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ══ HEADER ══════════════════════════════════════════════════════════ -->
+  <header>
+    <div class="logo">
+      <div class="logo-icon">🚀</div>
+      <div class="logo-text">
+        <h1>GitHub Event Intelligence</h1>
+        <p>Real-time event analytics · NLP enrichment · Live stream</p>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="queue-info">
+        Queue depth: <span id="queue-depth">—</span>
+        &nbsp;|&nbsp; WS clients: <span id="ws-clients">—</span>
+      </div>
+      <div class="live-badge" id="live-badge">
+        <div class="live-dot"></div>
+        <span id="live-label">CONNECTING</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ══ STATS CARDS ═══════════════════════════════════════════════════ -->
+  <div class="stats-grid">
+    <div class="stat-card blue">
+      <div class="stat-label">Total Events Ingested</div>
+      <div class="stat-value" id="stat-total">—</div>
+      <div class="stat-sub">
+        <span class="stat-badge badge-blue" id="stat-last-hour">— / hr</span>
+        last hour
+      </div>
+      <div class="stat-icon">📊</div>
+    </div>
+
+    <div class="stat-card cyan">
+      <div class="stat-label">Active Repositories</div>
+      <div class="stat-value" id="stat-repos">—</div>
+      <div class="stat-sub">last 24 hours</div>
+      <div class="stat-icon">📦</div>
+    </div>
+
+    <div class="stat-card green">
+      <div class="stat-label">Contributors</div>
+      <div class="stat-value" id="stat-actors">—</div>
+      <div class="stat-sub">unique authors · 24h</div>
+      <div class="stat-icon">👥</div>
+    </div>
+
+    <div class="stat-card purple">
+      <div class="stat-label">Positive Sentiment</div>
+      <div class="stat-value" id="stat-sentiment">—</div>
+      <div class="stat-sub">
+        <span class="stat-badge badge-green" id="stat-neg-pct">—% neg</span>
+        of all analysed
+      </div>
+      <div class="stat-icon">🧠</div>
+    </div>
+  </div>
+
+  <!-- ══ CHARTS ════════════════════════════════════════════════════════ -->
+  <div class="charts-grid">
+
+    <!-- Timeline -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title"><span class="icon">📈</span> Events / Hour (last 24 h)</div>
+        <div class="panel-count" id="timeline-total">—</div>
+      </div>
+      <div class="chart-wrapper">
+        <canvas id="timelineChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Distribution -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title"><span class="icon">🎯</span> Event Type Distribution</div>
+      </div>
+      <div class="chart-wrapper">
+        <canvas id="typeChart"></canvas>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══ BOTTOM ROW ════════════════════════════════════════════════════ -->
+  <div class="bottom-grid">
+
+    <!-- Live Feed -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title"><span class="icon">⚡</span> Live Event Stream</div>
+        <div class="panel-count" id="feed-count">0 events</div>
+      </div>
+      <div class="panel-body no-pad scroll" id="events-feed">
+        <div class="empty-state">
+          <span class="emoji">📡</span>
+          Waiting for events…
+        </div>
+      </div>
+    </div>
+
+    <!-- Trending + Contributors stacked -->
+    <div style="display:flex; flex-direction:column; gap:16px;">
+      <!-- Trending -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title"><span class="icon">🔥</span> Trending Repos</div>
+          <div class="panel-count" id="trending-count">—</div>
+        </div>
+        <div class="panel-body no-pad scroll" style="max-height:200px;" id="trending-list">
+          <div class="empty-state"><span class="emoji">🔍</span> Loading…</div>
+        </div>
+      </div>
+
+      <!-- Top Contributors -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title"><span class="icon">🏆</span> Top Contributors</div>
+        </div>
+        <div class="panel-body no-pad scroll" style="max-height:180px;" id="contrib-list">
+          <div class="empty-state"><span class="emoji">👤</span> Loading…</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- NLP Panel -->
+    <div style="display:flex; flex-direction:column; gap:16px;">
+      <!-- Sentiment -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title"><span class="icon">💬</span> Sentiment Analysis</div>
+        </div>
+        <div class="sentiment-bars" id="sentiment-bars">
+          <div class="sbar-row">
+            <span class="sbar-label">Positive</span>
+            <div class="sbar-track"><div class="sbar-fill" id="sbar-pos" style="width:0%;background:var(--green);"></div></div>
+            <span class="sbar-pct" id="sbar-pos-pct">0%</span>
+          </div>
+          <div class="sbar-row">
+            <span class="sbar-label">Neutral</span>
+            <div class="sbar-track"><div class="sbar-fill" id="sbar-neu" style="width:0%;background:var(--muted);"></div></div>
+            <span class="sbar-pct" id="sbar-neu-pct">0%</span>
+          </div>
+          <div class="sbar-row">
+            <span class="sbar-label">Negative</span>
+            <div class="sbar-track"><div class="sbar-fill" id="sbar-neg" style="width:0%;background:var(--red);"></div></div>
+            <span class="sbar-pct" id="sbar-neg-pct">0%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Keywords -->
+      <div class="panel" style="flex:1;">
+        <div class="panel-header">
+          <div class="panel-title"><span class="icon">🔑</span> Trending Keywords</div>
+        </div>
+        <div class="keyword-cloud" id="keyword-cloud">
+          <div class="empty-state" style="padding:20px;"><span>Loading keywords…</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /bottom-grid -->
+</div><!-- /app -->
+
+<!-- ── Toast Container ─────────────────────────────────────────────────── -->
+<div id="toast-container"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+//  GitHub Event Intelligence — Dashboard JS
+// ═══════════════════════════════════════════════════════════════════════════
+
+const API  = `${location.origin}/api`;
+const WS_URL = `ws://${location.host}/ws`;
+
+// ── State ──────────────────────────────────────────────────────────────────
+let feedCount    = 0;
+let timelineChart, typeChart;
+let ws = null;
+let reconnectTimer = null;
+let reconnectDelay = 1500;
+const MAX_FEED_ITEMS = 80;
+
+// ── Event Type → CSS class & label ─────────────────────────────────────────
+const EVENT_META = {
+  PushEvent:              { cls: 't-push',    label: 'PUSH',    emoji: '💻' },
+  WatchEvent:             { cls: 't-watch',   label: 'STAR',    emoji: '⭐' },
+  ForkEvent:              { cls: 't-fork',    label: 'FORK',    emoji: '🍴' },
+  PullRequestEvent:       { cls: 't-pr',      label: 'PR',      emoji: '🔀' },
+  IssuesEvent:            { cls: 't-issue',   label: 'ISSUE',   emoji: '🐛' },
+  IssueCommentEvent:      { cls: 't-issue',   label: 'COMMENT', emoji: '💬' },
+  CreateEvent:            { cls: 't-create',  label: 'CREATE',  emoji: '✨' },
+  DeleteEvent:            { cls: 't-delete',  label: 'DELETE',  emoji: '🗑️' },
+  ReleaseEvent:           { cls: 't-release', label: 'RELEASE', emoji: '🚀' },
+  PullRequestReviewEvent: { cls: 't-pr',      label: 'REVIEW',  emoji: '👀' },
+  MemberEvent:            { cls: 't-create',  label: 'MEMBER',  emoji: '👤' },
+  GollumEvent:            { cls: 't-other',   label: 'WIKI',    emoji: '📝' },
+};
+
+function getEventMeta(type) {
+  return EVENT_META[type] || { cls: 't-other', label: type.replace('Event','').toUpperCase(), emoji: '📌' };
+}
+
+// ── Number formatter ────────────────────────────────────────────────────────
+function fmt(n) {
+  if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n/1e3).toFixed(1) + 'K';
+  return String(n);
+}
+
+function timeAgo(isoStr) {
+  const diff = (Date.now() - new Date(isoStr)) / 1000;
+  if (diff < 60)   return `${Math.floor(diff)}s ago`;
+  if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+  return `${Math.floor(diff/3600)}h ago`;
+}
+
+// ── Update stat card with flash animation ─────────────────────────────────
+function setStat(id, value) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (el.textContent !== String(value)) {
+    el.textContent = value;
+    el.classList.remove('flash');
+    void el.offsetWidth;
+    el.classList.add('flash');
+  }
+}
+
+// ── Toast ──────────────────────────────────────────────────────────────────
+function toast(msg) {
+  const container = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  container.appendChild(el);
+  setTimeout(() => el.remove(), 3100);
+}
+
+// ─── WebSocket ────────────────────────────────────────────────────────────
+function connectWS() {
+  if (ws) { try { ws.close(); } catch(e){} }
+
+  ws = new WebSocket(WS_URL);
+
+  ws.onopen = () => {
+    setConnected(true);
+    reconnectDelay = 1500;
+  };
+
+  ws.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.msg_type === 'event') appendEvent(msg.data);
+      if (msg.msg_type === 'stats') applyStats(msg.data);
+    } catch(err) { console.error('WS parse error', err); }
+  };
+
+  ws.onclose = () => {
+    setConnected(false);
+    reconnectTimer = setTimeout(connectWS, reconnectDelay);
+    reconnectDelay = Math.min(reconnectDelay * 1.5, 15000);
+  };
+
+  ws.onerror = () => setConnected(false);
+}
+
+function setConnected(ok) {
+  const badge = document.getElementById('live-badge');
+  const label = document.getElementById('live-label');
+  badge.className = 'live-badge' + (ok ? '' : ' disconnected');
+  label.textContent = ok ? 'LIVE' : 'RECONNECTING';
+}
+
+// ── Render one event row ──────────────────────────────────────────────────
+function appendEvent(ev) {
+  const feed = document.getElementById('events-feed');
+
+  // Remove empty state
+  const empty = feed.querySelector('.empty-state');
+  if (empty) empty.remove();
+
+  const meta = getEventMeta(ev.type);
+  const sentCls = { positive:'s-positive', negative:'s-negative', neutral:'s-neutral' }[ev.sentiment_label] || 's-neutral';
+  const repoShort = (ev.repo || '').split('/').slice(-2).join('/');
+  const msgText = (ev.commit_message || '').replace(/\n/g,' ').trim().substring(0,100);
+  const avatarFallback = (ev.actor || '?')[0].toUpperCase();
+
+  const item = document.createElement('div');
+  item.className = 'event-item';
+  item.innerHTML = `
+    ${ev.actor_avatar
+      ? `<img class="event-avatar" src="${ev.actor_avatar}" alt="${ev.actor}" loading="lazy" onerror="this.outerHTML='<div class=\\"event-avatar-fallback\\">${avatarFallback}</div>'">`
+      : `<div class="event-avatar-fallback">${avatarFallback}</div>`
+    }
+    <div class="event-body">
+      <div class="event-top">
+        <span class="event-type-badge ${meta.cls}">${meta.emoji} ${meta.label}</span>
+        <span class="event-actor">${ev.actor || '?'}</span>
+        <span class="event-repo">→ ${repoShort}</span>
+      </div>
+      ${msgText ? `<div class="event-msg">${escHtml(msgText)}</div>` : ''}
+      <div class="event-footer">
+        <span class="event-time">${timeAgo(ev.created_at || new Date().toISOString())}</span>
+        <span class="sentiment-pill ${sentCls}">${ev.sentiment_label}</span>
+        ${(ev.keywords||[]).slice(0,3).map(k=>`<span class="sentiment-pill s-neutral">${k}</span>`).join('')}
+      </div>
+    </div>
+  `;
+
+  feed.prepend(item);
+  feedCount++;
+  document.getElementById('feed-count').textContent = `${feedCount} events`;
+
+  // Cap feed length
+  const items = feed.querySelectorAll('.event-item');
+  if (items.length > MAX_FEED_ITEMS) items[items.length - 1].remove();
+}
+
+function escHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Apply stats snapshot ───────────────────────────────────────────────────
+function applyStats(s) {
+  setStat('stat-total',     fmt(s.total_events || 0));
+  setStat('stat-repos',     fmt(s.unique_repos || 0));
+  setStat('stat-actors',    fmt(s.unique_actors || 0));
+  setStat('stat-sentiment', (s.positive_pct || 0).toFixed(1) + '%');
+  setStat('stat-last-hour', fmt(s.events_last_hour || 0) + ' / hr');
+  setStat('stat-neg-pct',   (s.negative_pct || 0).toFixed(1) + '% neg');
+  setStat('queue-depth',    s.queue_depth || 0);
+  setStat('ws-clients',     s.ws_clients || 0);
+
+  // Sentiment bars
+  const fields = [
+    ['pos', s.positive_pct || 0],
+    ['neu', s.neutral_pct  || 0],
+    ['neg', s.negative_pct || 0],
+  ];
+  fields.forEach(([id, pct]) => {
+    const fill = document.getElementById(`sbar-${id}`);
+    const pctEl = document.getElementById(`sbar-${id}-pct`);
+    if (fill) fill.style.width = pct + '%';
+    if (pctEl) pctEl.textContent = pct.toFixed(1) + '%';
+  });
+}
+
+// ─── Chart.js Setup ──────────────────────────────────────────────────────
+Chart.defaults.color       = '#6b87a8';
+Chart.defaults.borderColor = 'rgba(99,179,237,0.1)';
+Chart.defaults.font.family = "'Space Mono', monospace";
+
+function initTimelineChart() {
+  const ctx = document.getElementById('timelineChart');
+  timelineChart = new Chart(ctx, {
+    type: 'line',
+    data: { labels: [], datasets: [{
+      label: 'Events',
+      data: [],
+      borderColor: '#3b8ef3',
+      backgroundColor: 'rgba(59,142,243,0.08)',
+      fill: true,
+      tension: 0.4,
+      pointBackgroundColor: '#3b8ef3',
+      pointRadius: 3,
+      pointHoverRadius: 5,
+      borderWidth: 2,
+    }]},
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      animation: { duration: 600 },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#0d1525',
+          borderColor: 'rgba(99,179,237,0.2)',
+          borderWidth: 1,
+          titleColor: '#22d3ee',
+          bodyColor: '#e2eaf5',
+        }
+      },
+      scales: {
+        x: { ticks: { maxTicksLimit: 8, maxRotation: 0 }, grid: { color: 'rgba(99,179,237,0.06)' } },
+        y: { beginAtZero: true, grid: { color: 'rgba(99,179,237,0.06)' }, ticks: { precision: 0 } }
+      }
+    }
+  });
+}
+
+function initTypeChart() {
+  const ctx = document.getElementById('typeChart');
+  typeChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: { labels: [], datasets: [{
+      data: [],
+      backgroundColor: [
+        'rgba(59,142,243,0.8)','rgba(251,191,36,0.8)','rgba(52,211,153,0.8)',
+        'rgba(167,139,250,0.8)','rgba(248,113,113,0.8)','rgba(34,211,238,0.8)',
+        'rgba(244,114,182,0.8)','rgba(251,146,60,0.8)','rgba(107,135,168,0.8)',
+      ],
+      borderColor: '#070b14',
+      borderWidth: 2,
+      hoverOffset: 6,
+    }]},
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      cutout: '62%',
+      animation: { duration: 700 },
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { padding: 12, boxWidth: 10, font: { size: 11 } }
+        },
+        tooltip: {
+          backgroundColor: '#0d1525',
+          borderColor: 'rgba(99,179,237,0.2)',
+          borderWidth: 1,
+          titleColor: '#22d3ee',
+          bodyColor: '#e2eaf5',
+          callbacks: {
+            label: ctx => ` ${ctx.parsed} events  (${ctx.dataset.data.reduce((a,b)=>a+b,0)>0
+              ? ((ctx.parsed/ctx.dataset.data.reduce((a,b)=>a+b,0))*100).toFixed(1)+'%' : '0%'})`
+          }
+        }
+      }
+    }
+  });
+}
+
+// ─── REST Fetches ─────────────────────────────────────────────────────────
+async function fetchTimeline() {
+  try {
+    const res  = await fetch(`${API}/stats/hourly?hours=24`);
+    const data = await res.json();
+    if (!Array.isArray(data)) return;
+
+    const labels = data.map(r => r.hour ? r.hour.substring(11,16) : '?');
+    const counts = data.map(r => r.count || 0);
+
+    timelineChart.data.labels   = labels;
+    timelineChart.data.datasets[0].data = counts;
+    timelineChart.update();
+
+    const total = counts.reduce((a,b)=>a+b,0);
+    document.getElementById('timeline-total').textContent = `${fmt(total)} total`;
+  } catch(e) { console.warn('Timeline fetch failed', e); }
+}
+
+async function fetchTypeChart() {
+  try {
+    const res  = await fetch(`${API}/stats/event-types`);
+    const data = await res.json();
+    if (!Array.isArray(data)) return;
+
+    typeChart.data.labels = data.map(r => r.event_type.replace('Event',''));
+    typeChart.data.datasets[0].data = data.map(r => r.count);
+    typeChart.update();
+  } catch(e) { console.warn('Type chart fetch failed', e); }
+}
+
+async function fetchTrending() {
+  try {
+    const res  = await fetch(`${API}/trending?limit=10`);
+    const data = await res.json();
+    if (!Array.isArray(data) || !data.length) return;
+
+    document.getElementById('trending-count').textContent = `${data.length} repos`;
+    const maxEvt = Math.max(...data.map(r => r.total_events || 0), 1);
+
+    document.getElementById('trending-list').innerHTML = data.map(repo => {
+      const pct = ((repo.total_events || 0) / maxEvt * 100).toFixed(0);
+      const name = (repo.repo_name || '').split('/').pop();
+      const org  = (repo.repo_name || '').split('/')[0];
+      return `
+        <div class="repo-item">
+          <div class="repo-header">
+            <a class="repo-name" href="${repo.repo_url || '#'}" target="_blank" title="${repo.repo_name}">${org}/<strong>${name}</strong></a>
+            <span class="repo-count">${repo.total_events || 0} evt</span>
+          </div>
+          <div class="repo-bar-track"><div class="repo-bar-fill" style="width:${pct}%"></div></div>
+          <div class="repo-meta">
+            ${repo.primary_language ? `<span>🔵 ${repo.primary_language}</span>` : ''}
+            ${repo.push_count  ? `<span>💻 ${repo.push_count}</span>` : ''}
+            ${repo.star_count  ? `<span>⭐ ${repo.star_count}</span>` : ''}
+            ${repo.fork_count  ? `<span>🍴 ${repo.fork_count}</span>` : ''}
+            ${repo.pr_count    ? `<span>🔀 ${repo.pr_count}</span>` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch(e) { console.warn('Trending fetch failed', e); }
+}
+
+async function fetchContributors() {
+  try {
+    const res  = await fetch(`${API}/contributors?limit=8`);
+    const data = await res.json();
+    if (!Array.isArray(data) || !data.length) return;
+
+    document.getElementById('contrib-list').innerHTML = data.map((c,i) => `
+      <div class="contrib-item">
+        <img class="contrib-avatar" src="${c.actor_avatar || ''}" alt="${c.actor_login}"
+             onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 30 30%22><rect width=%2230%22 height=%2230%22 rx=%2215%22 fill=%22%233b8ef3%22/><text x=%2215%22 y=%2220%22 text-anchor=%22middle%22 fill=%22white%22 font-size=%2213%22>${(c.actor_login||'?')[0].toUpperCase()}</text></svg>'">
+        <span class="contrib-name">${c.actor_login}</span>
+        <span class="contrib-count">${c.event_count}</span>
+      </div>
+    `).join('');
+  } catch(e) { console.warn('Contributors fetch failed', e); }
+}
+
+async function fetchKeywords() {
+  try {
+    const res  = await fetch(`${API}/nlp/keywords?limit=24`);
+    const data = await res.json();
+    if (!Array.isArray(data) || !data.length) return;
+
+    const maxFreq = Math.max(...data.map(k => k.frequency), 1);
+    document.getElementById('keyword-cloud').innerHTML = data.map(kw => {
+      const sz = 0.75 + (kw.frequency / maxFreq) * 0.5;
+      return `<span class="keyword-tag" style="font-size:${sz.toFixed(2)}em">${kw.keyword} <span style="color:var(--muted);font-size:0.85em">${kw.frequency}</span></span>`;
+    }).join('');
+  } catch(e) { console.warn('Keywords fetch failed', e); }
+}
+
+async function fetchRecentEvents() {
+  try {
+    const res  = await fetch(`${API}/events?limit=20&page=1`);
+    const data = await res.json();
+    const items = data.items || [];
+    // Prepend historical events quietly
+    [...items].reverse().forEach(ev => {
+      // Map API response → WS event shape
+      appendEvent({
+        id:              ev.id,
+        type:            ev.event_type,
+        actor:           ev.actor_login,
+        actor_avatar:    ev.actor_avatar,
+        repo:            ev.repo_name,
+        created_at:      ev.created_at,
+        sentiment_label: ev.sentiment_label || 'neutral',
+        keywords:        Array.isArray(ev.keywords) ? ev.keywords : [],
+        commit_message:  ev.commit_message,
+      });
+    });
+  } catch(e) { console.warn('Recent events fetch failed', e); }
+}
+
+// ─── Initial load + periodic refresh ─────────────────────────────────────
+async function initialLoad() {
+  await Promise.all([
+    fetchTimeline(),
+    fetchTypeChart(),
+    fetchTrending(),
+    fetchContributors(),
+    fetchKeywords(),
+    fetchRecentEvents(),
+  ]);
+}
+
+function startPeriodicRefresh() {
+  setInterval(fetchTimeline,    30_000);
+  setInterval(fetchTypeChart,   30_000);
+  setInterval(fetchTrending,    20_000);
+  setInterval(fetchContributors,20_000);
+  setInterval(fetchKeywords,    45_000);
+}
+
+// ─── Boot ─────────────────────────────────────────────────────────────────
+(async () => {
+  initTimelineChart();
+  initTypeChart();
+  connectWS();
+  await initialLoad();
+  startPeriodicRefresh();
+})();
+</script>
+</body>
+</html>
