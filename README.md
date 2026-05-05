@@ -102,7 +102,7 @@ cp .env.example .env
 
 ### 3. Set up MySQL (XAMPP)
 1. Start XAMPP → Start **MySQL**
-2. Open phpMyAdmin → `http://localhost/phpmyadmin`
+2. Open phpMyAdmin → `[http://localhost:8081/phpmyadmin/]`
 3. Run the schema:
 
 ```bash
